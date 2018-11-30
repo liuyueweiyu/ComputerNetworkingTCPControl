@@ -1,7 +1,3 @@
----
-typora-copy-images-to: images
----
-
 ### 计算机网络课程作业	实现TCP协议端到端的可靠传输
 
 #### 实验须知
@@ -33,9 +29,9 @@ TCP进行可靠传输以保证数据包不会丢失、失序、重复并高效�
 - 超时重传
 - 选择确认
 
-![1543475127852](images\1543475127852.png)
+![1543475127852](https://raw.githubusercontent.com/liuyueweiyu/ComputerNetworkingHomework/master/images/1543475127852.png)
 
-![1543479194075](images\1543479194075.png)
+![1543479194075](https://raw.githubusercontent.com/liuyueweiyu/ComputerNetworkingHomework/master/images/1543479194075.png)
 
 #### 实验内容
 
@@ -129,13 +125,13 @@ TCP进行可靠传输以保证数据包不会丢失、失序、重复并高效�
 
    - 运行结果
 
-     ![1543481796291](images\1543481796291.png)
+     ![1543481796291](https://raw.githubusercontent.com/liuyueweiyu/ComputerNetworkingHomework/master/images/1543481796291.png)
 
      程序运行此处不再发送包，也不再接受包。
 
      查看日志可以看到
 
-     ![1543481775825](images\1543481775825.png)
+     ![1543481775825](https://raw.githubusercontent.com/liuyueweiyu/ComputerNetworkingHomework/master/images/1543481775825.png)
 
      编号5701为5701包出错，客户端检查出错。
 
@@ -206,15 +202,15 @@ TCP进行可靠传输以保证数据包不会丢失、失序、重复并高效�
 
      出错的包超时重传
 
-     ![1543483362057](images\1543483362057.png)
+     ![1543483362057](https://raw.githubusercontent.com/liuyueweiyu/ComputerNetworkingHomework/master/images/1543483362057.png)
 
      回复ack的包出错重传
 
      发送方并未出错
 
-     ![1543483489261](images\1543483489261.png)
+     ![1543483489261](https://raw.githubusercontent.com/liuyueweiyu/ComputerNetworkingHomework/master/images/1543483489261.png)
 
-     ![1543483522574](images\1543483522574.png)
+     ![1543483522574](https://raw.githubusercontent.com/liuyueweiyu/ComputerNetworkingHomework/master/images/1543483522574.png)
 
    - RDT3.0
 
@@ -226,11 +222,11 @@ TCP进行可靠传输以保证数据包不会丢失、失序、重复并高效�
 
      - 延迟
 
-       ![1543483965620](images\1543483965620.png)
+       ![1543483965620](https://raw.githubusercontent.com/liuyueweiyu/ComputerNetworkingHomework/master/images/1543483965620.png)
 
      - 丢包
 
-       ![1543484026183](images\1543484026183.png)
+       ![1543484026183](https://raw.githubusercontent.com/liuyueweiyu/ComputerNetworkingHomework/master/images/1543484026183.png)
 
    - 选择响应
 
@@ -428,13 +424,13 @@ TCP进行可靠传输以保证数据包不会丢失、失序、重复并高效�
 
      4. 运行结果
 
-        ![1543492404019](images\1543492404019.png)
+        ![1543492404019](https://raw.githubusercontent.com/liuyueweiyu/ComputerNetworkingHomework/master/images/1543492404019.png)
 
         当2801号包出错之后，窗口滑动至2801号窗口不再滑动，计时器时间到后重新发送，发送后窗口直接滑动至窗口尾即3601后，即开始发送3701号包
 
         本次发送情况为
 
-        ![1543492598614](images\1543492598614.png)
+        ![1543492598614](https://raw.githubusercontent.com/liuyueweiyu/ComputerNetworkingHomework/master/images/1543492598614.png)
 
         发送错误点部分情况为：
 
@@ -606,11 +602,11 @@ TCP进行可靠传输以保证数据包不会丢失、失序、重复并高效�
 
      可以看到当前53401号没有响应后，在计时器到时后，将当前的包全部重发了
 
-     ![1543493994705](images\1543493994705.png)
+     ![1543493994705](https://raw.githubusercontent.com/liuyueweiyu/ComputerNetworkingHomework/master/images/1543493994705.png)
 
      本次发送情况为
 
-     ![1543494085825](images\1543494085825.png)
+     ![1543494085825](https://raw.githubusercontent.com/liuyueweiyu/ComputerNetworkingHomework/master/images/1543494085825.png)
 
      发送错误点部分情况为：
 
@@ -759,7 +755,7 @@ TCP进行可靠传输以保证数据包不会丢失、失序、重复并高效�
 
       原因是TCP_PACKET类中仍然包括了其他的对象，虽然对于packet的clone是深拷贝，但是对于对象里面内嵌的对象仍然是拷贝其引用。故在重发的时候会重发原来的包的原因是便是包本身的引用还是本身的，但是header和segment的引用还是旧的，所以出现这个问题。
 
-      ![1543495285994](images\1543495285994.png)
+      ![1543495285994](https://raw.githubusercontent.com/liuyueweiyu/ComputerNetworkingHomework/master/images/1543495285994.png)
 
    2. 如果说上面的那个问题的让人感觉窒息的话，那么这个问题真是让人~~缩不粗发~~说不出话。
 
