@@ -401,7 +401,7 @@ TCP进行可靠传输以保证数据包不会丢失、失序、重复并高效�
 
      4. 运行结果
 
-        ![1543658335759](C:\Users\官欣仪\Desktop\hahaha\计算机网络\大作业\https://raw.githubusercontent.com/liuyueweiyu/ComputerNetworkingHomework/master/images/1543658335759.png)
+        ![1543658335759](https://raw.githubusercontent.com/liuyueweiyu/ComputerNetworkingHomework/master/images/1543658335759.png)
 
         当5001号包和5801号包没有收到回复，窗口滑动至5001号窗口和5801号窗口不再滑动，计时器时间到后重新发送，并且将窗口内的所以500\~5401号包和5801\~6201号包均被重发，这里涉及到一个问题，就是5001号包没被确认，5101号包该不该被确认，那么是必然的，因为如果只是单纯只允许确认了上一个包才能确认下一个包，那么万一当前确认的包回复的ack包出错那么就会引起错误，所以必须每个包都确认。
 
