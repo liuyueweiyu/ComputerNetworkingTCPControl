@@ -32,7 +32,7 @@ public class TCP_Sender extends TCP_Sender_ADT {
 		while(window.isFull());
 		try {
 			TCP_PACKET packet = new TCP_PACKET(tcpH.clone(), tcpS.clone(), destinAddr);	
-			window.sendPacket_select(packet);
+			window.sendPacket_GBN(packet);
 		} catch (CloneNotSupportedException e) {
 			// TODO Auto-generated catch block
 			e.printStackTrace();
@@ -58,7 +58,7 @@ public class TCP_Sender extends TCP_Sender_ADT {
 		//需要检查校验和
 		if(CheckSum.computeChkSum(recvPack) != 0)
 			return;
-		window.ackPacket(recvPack);
+		window.ackPacket_GBN(recvPack);
 	}
 	
 }

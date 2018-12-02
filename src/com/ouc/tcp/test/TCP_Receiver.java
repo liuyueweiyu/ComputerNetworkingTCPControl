@@ -33,7 +33,7 @@ public class TCP_Receiver extends TCP_Receiver_ADT {
 		tcpH.setTh_sum((short) 0);
 		tcpH.setTh_sum(CheckSum.computeChkSum(ackPack));
 		//回复ACK报文段
-		Vector data = window.reply(recvPack,ackPack);
+		Vector data = window.reply_BGN(recvPack,ackPack);
 		//交付数据
 		if( data != null) {
 			for(int i = 0;i<data.size();i++) {
@@ -56,12 +56,10 @@ public class TCP_Receiver extends TCP_Receiver_ADT {
 			//循环检查data队列中是否有新交付数据
 			while(!dataQueue.isEmpty()) {
 				int[] data = dataQueue.poll();
-				
 				//将数据写入文件
 				for(int i = 0; i < data.length; i++) {
 					writer.write(data[i] + "\n");
 				}
-				
 				writer.flush();		//清空输出缓存
 			}
 			writer.close();

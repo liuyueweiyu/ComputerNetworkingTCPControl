@@ -23,32 +23,32 @@ public class SendWindow extends Window {
 		@Override
 		/*重传TCP数据报*/
 		public void run() {
-			for (int i=begin;i<= now;i++) {
+			for (int i=begin;i< now;i++) {
 				int index = i%windowSize;
 				if(packets[index]!=null) {
 					try {
+						timers[index].cancel();
+//						timers[index] = new UDT_Timer();
+//						TaskPacketsRetrans reTrans = new TaskPacketsRetrans();
+//						timers[index].schedule(reTrans, 5000, 1500);
 						client.send(packets[index].clone());
 					} catch (CloneNotSupportedException e) {
 						// TODO Auto-generated catch block
 						e.printStackTrace();
 					}	
 				}
-				
-				
 			}
 		}
 	}
 	/*构造函数*/
 	public SendWindow(Client client) {
 		super(client);
-//		client = client;
 	}		
 	
 	public void sendPacket_select(TCP_PACKET packet) {	//向窗口中加入新包
 		int index = now%windowSize;
 		packets[index] = packet;
 		checkAck[index] = false;
-		
 		timers[index] = new UDT_Timer();
 		UDT_RetransTask reTrans = new UDT_RetransTask(client, packet);
 		timers[index].schedule(reTrans, 5000, 1500);
@@ -63,7 +63,6 @@ public class SendWindow extends Window {
 		//在窗口的idnex
 		int index = now%windowSize;
 		packets[index] = packet;
-		checkAck[index] = false;
 		timers[index] = new UDT_Timer();
 		TaskPacketsRetrans reTrans = new TaskPacketsRetrans();
 		timers[index].schedule(reTrans, 5000, 1500);
@@ -72,7 +71,7 @@ public class SendWindow extends Window {
 		client.send(packet);
 	}
 	
-	public void  ackPacket(TCP_PACKET packet) {	//收到ack包后将返回的包确认
+	public void  ackPacket_select(TCP_PACKET packet) {	//收到ack包后将返回的包确认
 		int i = packet.getTcpH().getTh_ack()/100;
 		if(i >= 0) {
 			int index = i%windowSize;
@@ -96,6 +95,20 @@ public class SendWindow extends Window {
 		}
 		receiveWindowlog_receive(i*100+1);
 	}
+	
+	public void  ackPacket_GBN(TCP_PACKET packet) {	//收到ack包后将返回的包确认
+		int seq = packet.getTcpH().getTh_ack();
+		if(seq == sequence) {
+			int index = (seq/100)%windowSize;
+			if(packets[index]!= null) {	
+				timers[index].cancel();
+				begin++;
+				end++;
+				sequence += 100;
+			}	
+		}
+	}
+	
 	public void receiveWindowlog_send(int seq) {
 		//检查dataQueue，将数据写入文件
 		File fw = new File("sendLog.txt");
@@ -176,6 +189,9 @@ public class SendWindow extends Window {
 	}
 	
 	public boolean  isFull() {
+		System.out.println("begin:"+begin);
+		System.out.println("now:"+now);
+		System.out.println("end:"+end);
 		return now == end;
 	}
 	

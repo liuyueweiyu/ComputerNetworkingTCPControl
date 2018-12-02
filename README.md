@@ -12,14 +12,7 @@
 
 - RDT3.0到选择响应所有文件变动较大，所以如果要运行RDT3.0，需要替换一下文件，文件放在了RDT3.0的文件夹中
 
-- 选择响应传输和GBN传输的只要在的TCP_Sender.java中rdt_send调用对应send函数即可
-
-
-#### 实验要求
-
-1. 实现TCP协议端到端的可靠传输：数据包传送和确认，及对各种传输错误的处理；选择响应
-
-2. 实现TCP_Sender类和TCP_Receiver类，进阶实现：RDT2.0 ->RDT2.2 -> RDT3.0 -> RDT4.0 选择响应协议
+- 选择响应传输和GBN传输的只要在的TCP_Sender.java，TCP_receiver.java中rdt_send调用对应send函数和reply函数即可
 
 #### 实验原理
 
@@ -228,7 +221,7 @@ TCP进行可靠传输以保证数据包不会丢失、失序、重复并高效�
 
        ![1543484026183](https://raw.githubusercontent.com/liuyueweiyu/ComputerNetworkingHomework/master/images/1543484026183.png)
 
-   - 选择响应
+   - BGN响应
 
      上述实验都是在当前最多只能发一个包的情况下进行的，效率非常低，所以对上诉实验进行完善
 
@@ -269,7 +262,7 @@ TCP进行可靠传输以保证数据包不会丢失、失序、重复并高效�
         	/*构造函数*/
         	public SendWindow(Client client) {}		
         	//通过选择响应的方式的发包
-        	public void sendPacket_select(TCP_PACKET packet) {}
+        	public void sendPacket_GBN(TCP_PACKET packet) {}
         	//接收到ack包对窗口操作，查看是否应该滑动窗口
         	public void  ackPacket(TCP_PACKET packet) {}
         	//判断窗口是否满
@@ -286,7 +279,7 @@ TCP进行可靠传输以保证数据包不会丢失、失序、重复并高效�
         	//接收到发送包发来的包后进行回复
             //recvPack:回复的包
             //packet:收到的包
-        	public Vector reply(TCP_PACKET recvPack,TCP_PACKET packet) {}
+        	public Vector reply_GBN(TCP_PACKET recvPack,TCP_PACKET packet) {}
         }
         ```
 
@@ -302,7 +295,7 @@ TCP进行可靠传输以保证数据包不会丢失、失序、重复并高效�
                 //发送TCP数据报，注意这里发送的必须是packet的副本
                 //因为在直接赋值的话，是浅拷贝，赋值引用，在后续发送中会出错
         		TCP_PACKET packet = new TCP_PACKET(tcpH.clone(), tcpS.clone(), destinAddr);	
-        		window.sendPacket_select(packet);
+        		window.sendPacket_GBN(packet);
         	} catch (CloneNotSupportedException e) {
         		// TODO Auto-generated catch block
         		e.printStackTrace();
@@ -313,17 +306,18 @@ TCP进行可靠传输以保证数据包不会丢失、失序、重复并高效�
 
         ```java
         //SendWindow.java
-        public void sendPacket_select(TCP_PACKET packet) {	//向窗口中加入新包
-            //这里涉及循环队列的设计
-            //循环队列的三个指针只要自加%windowSize就是窗口对应的下标
+        public void sendPacket_GBN(TCP_PACKET packet) throws CloneNotSupportedException {	//向窗口中加入新包
+        	//在窗口的idnex
         	int index = now%windowSize;
-            packets[index] = packet;	//把包赋值至缓存区
-            checkAck[index] = false;	//将包的确认情况设置为未确认
-        	timers[index] = new UDT_Timer();	//给包新增计时器
-        	UDT_RetransTask reTrans = new UDT_RetransTask(client, packet);
+        	packets[index] = packet;
+        	checkAck[index] = false;
+        	timers[index] = new UDT_Timer();
+        	TaskPacketsRetrans reTrans = new TaskPacketsRetrans();
+            //设置超时重发
         	timers[index].schedule(reTrans, 5000, 1500);
-        	now++;	//移动now指针
-        	client.send(packet);	//发送包
+        	setNowLog(packet.getTcpH().getTh_seq());
+        	now++;
+        	client.send(packet);
         }
         ```
 
@@ -335,7 +329,7 @@ TCP进行可靠传输以保证数据包不会丢失、失序、重复并高效�
         		return;
             //...
         	//回复ACK报文段
-        	Vector data = window.reply(recvPack,ackPack);
+        	Vector data = window.reply_GNB(recvPack,ackPack);
         	//data不为nulll意味着窗口首的数据满了，可以交付数据
         	if( data != null) {
         		for(int i = 0;i<data.size();i++) {
@@ -348,36 +342,19 @@ TCP进行可靠传输以保证数据包不会丢失、失序、重复并高效�
 
         ```java
         //ReceiveWindow.java
-        public Vector reply(TCP_PACKET recvPack,TCP_PACKET packet) {
+        public Vector reply_BGN(TCP_PACKET recvPack,TCP_PACKET packet) {
+        	client.send(packet);
         	Vector result = new Vector();
-            //收到的包的下标
-        	int index = packet.getTcpH().getTh_ack()/100;
-            //排除收到的是之前延迟过了很久才到的包的情况
-        	if(index >= begin ) {
-                //收到的包对应的缓存区的下标
-        		index = index % windowSize;
-        		checkAck[index] = true;	//设置已经确认
-        		packets[index] = recvPack;	//将收到的包放入缓存区
-        		client.send(packet);	//发送ack包
-                //当前确认的包为窗口的第一个值时开始滑动窗口
-        		if(index == begin%windowSize) {		
-        			int j = begin;
-        			for(;j<=end&&checkAck[j%windowSize];j++) {
-                        //滑动的同时将信息清空
-        				int jdenx = j%windowSize;
-        				System.out.println(jdenx);
-        				result.addElement(packets[jdenx].getTcpS().getData());
-        				checkAck[jdenx] = false;
-        			}
-                    //确认滑动终点
-        			begin = j ;
-        			end = begin + windowSize - 1;
-        			sequence = packets[(begin1)%windowSize].getTcpH().getTh_seq();
-        			//并且交付数据
-                    return result;
-        		}
+            //判断是否为当前所期待接收的包
+        	if(recvPack.getTcpH().getTh_seq() == sequence) {
+                //这里的写法有点奇怪，明明只有一个值却返回了一个vector
+                //因为为了和后面的选择响应兼容所以采取这样的写法
+        		result.addElement(recvPack.getTcpS().getData());
+                sequence += recvPack.getTcpS().getData().length;
+        		return result;
         	}
-        	return null;
+        	else
+        		return null;
         }
         ```
 
@@ -424,316 +401,289 @@ TCP进行可靠传输以保证数据包不会丢失、失序、重复并高效�
 
      4. 运行结果
 
-        ![1543492404019](https://raw.githubusercontent.com/liuyueweiyu/ComputerNetworkingHomework/master/images/1543492404019.png)
+        ![1543658335759](C:\Users\官欣仪\Desktop\hahaha\计算机网络\大作业\https://raw.githubusercontent.com/liuyueweiyu/ComputerNetworkingHomework/master/images/1543658335759.png)
 
-        当2801号包出错之后，窗口滑动至2801号窗口不再滑动，计时器时间到后重新发送，发送后窗口直接滑动至窗口尾即3601后，即开始发送3701号包
+        当5001号包和5801号包没有收到回复，窗口滑动至5001号窗口和5801号窗口不再滑动，计时器时间到后重新发送，并且将窗口内的所以500\~5401号包和5801\~6201号包均被重发，这里涉及到一个问题，就是5001号包没被确认，5101号包该不该被确认，那么是必然的，因为如果只是单纯只允许确认了上一个包才能确认下一个包，那么万一当前确认的包回复的ack包出错那么就会引起错误，所以必须每个包都确认。
 
         本次发送情况为
 
-        ![1543492598614](https://raw.githubusercontent.com/liuyueweiyu/ComputerNetworkingHomework/master/images/1543492598614.png)
+        ![1543658918055](https://raw.githubusercontent.com/liuyueweiyu/ComputerNetworkingHomework/master/images/1543658918055.png)
 
         发送错误点部分情况为：
 
         ```
         ...
-        	2018-11-29 19:12:41:755 CST	DATA_seq: 2801	WRONG	NO_ACK
-        	2018-11-29 19:12:41:778 CST	DATA_seq: 2901		ACKed
-        	2018-11-29 19:12:41:794 CST	DATA_seq: 3001		ACKed
-        	2018-11-29 19:12:41:812 CST	DATA_seq: 3101		ACKed
-        	2018-11-29 19:12:41:835 CST	DATA_seq: 3201		ACKed
-        	2018-11-29 19:12:41:850 CST	DATA_seq: 3301		ACKed
-        	2018-11-29 19:12:41:879 CST	DATA_seq: 3401		ACKed
-        	2018-11-29 19:12:41:924 CST	DATA_seq: 3501		ACKed
-        	2018-11-29 19:12:41:939 CST	DATA_seq: 3601		ACKed
-        	2018-11-29 19:12:46:746 CST	*Re: DATA_seq: 2801		ACKed
-        	2018-11-29 19:12:46:751 CST	DATA_seq: 3701		ACKed
-        	2018-11-29 19:12:46:765 CST	DATA_seq: 3801		ACKed
+        	2018-12-01 17:51:24:404 CST	DATA_seq: 4901		ACKed
+        	2018-12-01 17:51:24:453 CST	DATA_seq: 5001	WRONG	NO_ACK
+        	2018-12-01 17:51:24:512 CST	DATA_seq: 5101		ACKed
+        	2018-12-01 17:51:24:530 CST	DATA_seq: 5201		ACKed
+        	2018-12-01 17:51:24:581 CST	DATA_seq: 5301		ACKed
+        	2018-12-01 17:51:24:616 CST	DATA_seq: 5401		ACKed
+        	2018-12-01 17:51:29:452 CST	*Re: DATA_seq: 5001		ACKed
+        	2018-12-01 17:51:29:453 CST	DATA_seq: 5101		ACKed
+        	2018-12-01 17:51:29:457 CST	DATA_seq: 5201		ACKed
+        	2018-12-01 17:51:29:459 CST	DATA_seq: 5301		ACKed
+        	2018-12-01 17:51:29:459 CST	DATA_seq: 5401		ACKed
+        	2018-12-01 17:51:29:462 CST	DATA_seq: 5501		ACKed
+        	2018-12-01 17:51:29:564 CST	DATA_seq: 5601		ACKed
+        	2018-12-01 17:51:29:615 CST	DATA_seq: 5701		ACKed
+        	2018-12-01 17:51:29:634 CST	DATA_seq: 5801		NO_ACK
+        	2018-12-01 17:51:29:659 CST	DATA_seq: 5901		ACKed
+        	2018-12-01 17:51:29:681 CST	DATA_seq: 6001		ACKed
+        	2018-12-01 17:51:29:696 CST	DATA_seq: 6101		ACKed
+        	2018-12-01 17:51:29:723 CST	DATA_seq: 6201		ACKed
+        	2018-12-01 17:51:34:628 CST	*Re: DATA_seq: 5801		ACKed
+        	2018-12-01 17:51:34:628 CST	DATA_seq: 5901		ACKed
+        	2018-12-01 17:51:34:628 CST	DATA_seq: 6001		ACKed
+        	2018-12-01 17:51:34:629 CST	DATA_seq: 6101		ACKed
+        	2018-12-01 17:51:34:629 CST	DATA_seq: 6201		ACKed
+        	2018-12-01 17:51:34:641 CST	DATA_seq: 6301		ACKed
+        	2018-12-01 17:51:34:656 CST	DATA_seq: 6401		ACKed
+        	2018-12-01 17:51:34:670 CST	DATA_seq: 6501		ACKed
+        	2018-12-01 17:51:34:688 CST	DATA_seq: 6601		ACKed
+        	2018-12-01 17:51:34:704 CST	DATA_seq: 6701		ACKed
+        	2018-12-01 17:51:34:723 CST	DATA_seq: 6801		ACKed
+        	2018-12-01 17:51:34:739 CST	DATA_seq: 6901		ACKed
         ...
         ...
-        	2018-11-29 19:12:47:739 CST	DATA_seq: 7701		ACKed
-        	2018-11-29 19:12:47:769 CST	DATA_seq: 7801		NO_ACK
-        	2018-11-29 19:12:47:806 CST	DATA_seq: 7901		ACKed
-        	2018-11-29 19:12:47:824 CST	DATA_seq: 8001		ACKed
-        	2018-11-29 19:12:47:865 CST	DATA_seq: 8101		ACKed
-        	2018-11-29 19:12:47:885 CST	DATA_seq: 8201		ACKed
-        	2018-11-29 19:12:47:899 CST	DATA_seq: 8301		ACKed
-        	2018-11-29 19:12:47:914 CST	DATA_seq: 8401		ACKed
-        	2018-11-29 19:12:47:932 CST	DATA_seq: 8501		ACKed
-        	2018-11-29 19:12:47:953 CST	DATA_seq: 8601		ACKed
-        	2018-11-29 19:12:52:768 CST	*Re: DATA_seq: 7801		ACKed
-        	2018-11-29 19:12:52:771 CST	DATA_seq: 8701		ACKed
-        	2018-11-29 19:12:52:784 CST	DATA_seq: 8801		ACKed
-        	2018-11-29 19:12:52:796 CST	DATA_seq: 8901		ACKed
+        	2018-12-01 17:51:35:378 CST	DATA_seq: 8701		ACKed
+        	2018-12-01 17:51:35:436 CST	DATA_seq: 8801		ACKed
+        	2018-12-01 17:51:35:475 CST	DATA_seq: 8901		ACKed
+        	2018-12-01 17:51:35:546 CST	DATA_seq: 9001		ACKed
+        	2018-12-01 17:51:35:609 CST	DATA_seq: 9101		ACKed
+        	2018-12-01 17:51:35:653 CST	DATA_seq: 9201		NO_ACK
+        	2018-12-01 17:51:35:708 CST	DATA_seq: 9301		ACKed
+        	2018-12-01 17:51:35:803 CST	DATA_seq: 9401		ACKed
+        	2018-12-01 17:51:35:847 CST	DATA_seq: 9501		ACKed
+        	2018-12-01 17:51:35:888 CST	DATA_seq: 9601		ACKed
+        	2018-12-01 17:51:40:652 CST	*Re: DATA_seq: 9201		ACKed
+        	2018-12-01 17:51:40:652 CST	DATA_seq: 9301		ACKed
+        	2018-12-01 17:51:40:653 CST	DATA_seq: 9401		ACKed
+        	2018-12-01 17:51:40:653 CST	DATA_seq: 9501		ACKed
+        	2018-12-01 17:51:40:654 CST	DATA_seq: 9601		ACKed
+        	2018-12-01 17:51:40:663 CST	DATA_seq: 9701		ACKed
+        	2018-12-01 17:51:40:686 CST	DATA_seq: 9801		NO_ACK
+        	2018-12-01 17:51:40:702 CST	DATA_seq: 9901		ACKed
+        	2018-12-01 17:51:40:718 CST	DATA_seq: 10001		ACKed
+        	2018-12-01 17:51:40:737 CST	DATA_seq: 10101		ACKed
+        	2018-12-01 17:51:40:753 CST	DATA_seq: 10201		ACKed
+        	2018-12-01 17:51:45:674 CST	*Re: DATA_seq: 9801		ACKed
+        	2018-12-01 17:51:45:675 CST	DATA_seq: 9901		ACKed
+        	2018-12-01 17:51:45:676 CST	DATA_seq: 10001		ACKed
+        	2018-12-01 17:51:45:677 CST	DATA_seq: 10101		ACKed
+        	2018-12-01 17:51:45:679 CST	DATA_seq: 10201		ACKed
+        	2018-12-01 17:51:45:691 CST	DATA_seq: 10301		ACKed
+        	2018-12-01 17:51:45:709 CST	DATA_seq: 10401		ACKed
+        	2018-12-01 17:51:45:734 CST	DATA_seq: 10501		ACKed
+        	2018-12-01 17:51:45:758 CST	DATA_seq: 10601		ACKed
+        	2018-12-01 17:51:45:776 CST	DATA_seq: 10701		ACKed
+        	2018-12-01 17:51:45:796 CST	DATA_seq: 10801		ACKed
         ...
         ...
-        	2018-11-29 19:12:53:040 CST	DATA_seq: 10601		ACKed
-        	2018-11-29 19:12:53:053 CST	DATA_seq: 10701		ACKed
-        	2018-11-29 19:12:53:064 CST	DATA_seq: 10801	LOSS	NO_ACK
-        	2018-11-29 19:12:53:076 CST	DATA_seq: 10901		ACKed
-        	2018-11-29 19:12:53:089 CST	DATA_seq: 11001		NO_ACK
-        	2018-11-29 19:12:53:102 CST	DATA_seq: 11101		ACKed
-        	2018-11-29 19:12:53:115 CST	DATA_seq: 11201		ACKed
-        	2018-11-29 19:12:53:140 CST	DATA_seq: 11301		ACKed
-        	2018-11-29 19:12:53:152 CST	DATA_seq: 11401		ACKed
-        	2018-11-29 19:12:53:163 CST	DATA_seq: 11501		ACKed
-        	2018-11-29 19:12:53:180 CST	DATA_seq: 11601		ACKed
-        	2018-11-29 19:12:58:065 CST	*Re: DATA_seq: 10801		ACKed
-        	2018-11-29 19:12:58:069 CST	DATA_seq: 11701		ACKed
-        	2018-11-29 19:12:58:085 CST	DATA_seq: 11801		ACKed
-        	2018-11-29 19:12:58:090 CST	*Re: DATA_seq: 11001	LOSS	NO_ACK
-        	2018-11-29 19:12:59:590 CST	*Re: DATA_seq: 11001		ACKed
-        	2018-11-29 19:12:59:594 CST	DATA_seq: 11901		ACKed
-        	2018-11-29 19:12:59:612 CST	DATA_seq: 12001		ACKed
-        	2018-11-29 19:12:59:627 CST	DATA_seq: 12101		ACKed
-        	2018-11-29 19:12:59:657 CST	DATA_seq: 12201		ACKed
-        ...
-        ...
-        	2018-11-29 19:13:00:145 CST	DATA_seq: 14701	LOSS	NO_ACK
-        	2018-11-29 19:13:00:199 CST	DATA_seq: 14801		ACKed
-        	2018-11-29 19:13:00:214 CST	DATA_seq: 14901		ACKed
-        	2018-11-29 19:13:00:242 CST	DATA_seq: 15001		ACKed
-        	2018-11-29 19:13:00:254 CST	DATA_seq: 15101		ACKed
-        	2018-11-29 19:13:00:267 CST	DATA_seq: 15201		ACKed
-        	2018-11-29 19:13:00:287 CST	DATA_seq: 15301		ACKed
-        	2018-11-29 19:13:00:301 CST	DATA_seq: 15401		ACKed
-        	2018-11-29 19:13:00:315 CST	DATA_seq: 15501	DELAY	NO_ACK
-        	2018-11-29 19:13:05:146 CST	*Re: DATA_seq: 14701		ACKed
-        	2018-11-29 19:13:05:149 CST	DATA_seq: 15601		ACKed
-        	2018-11-29 19:13:05:161 CST	DATA_seq: 15701		ACKed
-        	2018-11-29 19:13:05:173 CST	DATA_seq: 15801		ACKed
-        	2018-11-29 19:13:05:186 CST	DATA_seq: 15901		ACKed
-        	2018-11-29 19:13:05:197 CST	DATA_seq: 16001		ACKed
-        	2018-11-29 19:13:05:215 CST	DATA_seq: 16101		ACKed
-        	2018-11-29 19:13:05:229 CST	DATA_seq: 16201		ACKed
-        	2018-11-29 19:13:05:242 CST	DATA_seq: 16301		ACKed
-        	2018-11-29 19:13:05:340 CST	*Re: DATA_seq: 15501		ACKed
-        	2018-11-29 19:13:05:358 CST	DATA_seq: 16401		ACKed
-        ...
-        ...
-        	2018-11-29 19:13:06:470 CST	DATA_seq: 20901		ACKed
-        	2018-11-29 19:13:06:489 CST	DATA_seq: 21001		ACKed
-        	2018-11-29 19:13:06:509 CST	DATA_seq: 21101		NO_ACK
-        	2018-11-29 19:13:06:532 CST	DATA_seq: 21201		ACKed
-        	2018-11-29 19:13:06:555 CST	DATA_seq: 21301		ACKed
-        	2018-11-29 19:13:06:574 CST	DATA_seq: 21401		ACKed
-        	2018-11-29 19:13:06:597 CST	DATA_seq: 21501		ACKed
-        	2018-11-29 19:13:06:615 CST	DATA_seq: 21601		ACKed
-        	2018-11-29 19:13:06:634 CST	DATA_seq: 21701		ACKed
-        	2018-11-29 19:13:06:653 CST	DATA_seq: 21801		ACKed
-        	2018-11-29 19:13:06:682 CST	DATA_seq: 21901		NO_ACK
-        	2018-11-29 19:13:11:510 CST	*Re: DATA_seq: 21101		ACKed
-        	2018-11-29 19:13:11:512 CST	DATA_seq: 22001		ACKed
-        	2018-11-29 19:13:11:523 CST	DATA_seq: 22101		ACKed
-        	2018-11-29 19:13:11:535 CST	DATA_seq: 22201		ACKed
-        	2018-11-29 19:13:11:548 CST	DATA_seq: 22301		ACKed
-        	2018-11-29 19:13:11:561 CST	DATA_seq: 22401		ACKed
-        	2018-11-29 19:13:11:574 CST	DATA_seq: 22501		ACKed
-        	2018-11-29 19:13:11:586 CST	DATA_seq: 22601		ACKed
-        	2018-11-29 19:13:11:598 CST	DATA_seq: 22701		ACKed
-        	2018-11-29 19:13:11:682 CST	*Re: DATA_seq: 21901	WRONG	NO_ACK
-        	2018-11-29 19:13:13:182 CST	*Re: DATA_seq: 21901		ACKed
-        	2018-11-29 19:13:13:185 CST	DATA_seq: 22801		ACKed
-        	2018-11-29 19:13:13:205 CST	DATA_seq: 22901		ACKed
-        	2018-11-29 19:13:13:230 CST	DATA_seq: 23001		ACKed
-        ...
-        ...
-        	2018-11-29 19:13:14:688 CST	DATA_seq: 30401		ACKed
-        	2018-11-29 19:13:14:708 CST	DATA_seq: 30501	LOSS	NO_ACK
-        	2018-11-29 19:13:14:730 CST	DATA_seq: 30601		ACKed
-        	2018-11-29 19:13:14:761 CST	DATA_seq: 30701		ACKed
-        	2018-11-29 19:13:14:787 CST	DATA_seq: 30801		ACKed
-        	2018-11-29 19:13:14:803 CST	DATA_seq: 30901		ACKed
-        	2018-11-29 19:13:14:835 CST	DATA_seq: 31001		ACKed
-        	2018-11-29 19:13:14:850 CST	DATA_seq: 31101		ACKed
-        	2018-11-29 19:13:14:885 CST	DATA_seq: 31201		ACKed
-        	2018-11-29 19:13:14:941 CST	DATA_seq: 31301		ACKed
-        	2018-11-29 19:13:19:708 CST	*Re: DATA_seq: 30501		ACKed
-        	2018-11-29 19:13:19:710 CST	DATA_seq: 31401		ACKed
-        	2018-11-29 19:13:19:722 CST	DATA_seq: 31501		ACKed
-        	2018-11-29 19:13:19:735 CST	DATA_seq: 31601		ACKed
-        	2018-11-29 19:13:19:746 CST	DATA_seq: 31701		ACKed
-        ...
-        ...
+        	2018-12-01 17:51:46:379 CST	DATA_seq: 12601		ACKed
+        	2018-12-01 17:51:46:412 CST	DATA_seq: 12701		ACKed
+        	2018-12-01 17:51:46:483 CST	DATA_seq: 12801	WRONG	NO_ACK
+        	2018-12-01 17:51:46:528 CST	DATA_seq: 12901		ACKed
+        	2018-12-01 17:51:46:589 CST	DATA_seq: 13001		ACKed
+        	2018-12-01 17:51:46:657 CST	DATA_seq: 13101		ACKed
+        	2018-12-01 17:51:46:674 CST	DATA_seq: 13201		ACKed
+        	2018-12-01 17:51:51:477 CST	*Re: DATA_seq: 12801		ACKed
+        	2018-12-01 17:51:51:477 CST	DATA_seq: 12901		ACKed
+        	2018-12-01 17:51:51:478 CST	DATA_seq: 13001		ACKed
+        	2018-12-01 17:51:51:478 CST	DATA_seq: 13101		ACKed
+        	2018-12-01 17:51:51:478 CST	DATA_seq: 13201		ACKed
+        	2018-12-01 17:51:51:487 CST	DATA_seq: 13301		ACKed
+        	2018-12-01 17:51:51:519 CST	DATA_seq: 13401		ACKed
+        	2018-12-01 17:51:51:548 CST	DATA_seq: 13501		ACKed
+        	2018-12-01 17:51:51:578 CST	DATA_seq: 13601		ACKed
+        	2018-12-01 17:51:51:604 CST	DATA_seq: 13701		ACKed
+        	2018-12-01 17:51:51:640 CST	DATA_seq: 13801		ACKed
         ...
         ```
 
-   - GBN
 
-     关于go-back-n只有发送窗口的关于超时的时候所进行的操作不同
-
-     所以，要重写TimerTask的run函数已达到重发当前窗口之后所以的包的目的
-
+     **选择响应**
+    
+     流程和GBN一样，只有修改sender的发送函数和receiver的接收函数
+    
      ```java
-     public void run() {
-         //重发当前窗口所有的包
-     	for (int i=begin;i<= now;i++) {
-     		int index = i%windowSize;
-     		if(packets[index]!=null) {
-     			try {
-     				client.send(packets[index].clone());
-     			} catch (CloneNotSupportedException e) {
-     				// TODO Auto-generated catch block
-     				e.printStackTrace();
-     			}	
-     		}		
-     	}
-     }
-     ```
-
-     然后只要将sendPacket_select函数做以下修改即可
-
-     ```java
-     public void sendPacket_GBN(TCP_PACKET packet) throws CloneNotSupportedException {	//向窗口中加入新包
-     	//在窗口的idnex
+     //SendWindow.java
+     public void sendPacket_select(TCP_PACKET packet) {	//向窗口中加入新包
      	int index = now%windowSize;
      	packets[index] = packet;
      	checkAck[index] = false;
      	timers[index] = new UDT_Timer();
-         //修改部分
-     	TaskPacketsRetrans reTrans = new TaskPacketsRetrans();
+         //二者不同唯一就是超时后，选择响应只发一个包，而GBN发多个包
+     	UDT_RetransTask reTrans = new UDT_RetransTask(client, packet);
      	timers[index].schedule(reTrans, 5000, 1500);
-     	setNowLog(packet.getTcpH().getTh_seq());
      	now++;
      	client.send(packet);
      }
      ```
-
+    
+     ```java
+     //ReceiveWindow.java
+     public Vector reply_select(TCP_PACKET recvPack,TCP_PACKET packet) {
+     	Vector result = new Vector();
+     	int index = packet.getTcpH().getTh_ack()/100;
+     	if(index >= 0 ) {
+     		index = index % windowSize;
+     		checkAck[index] = true;
+     		packets[index] = recvPack;
+     		client.send(packet);
+             //选择响应也增加窗口滑动
+     		if(index == begin%windowSize) {
+     			int j = begin;
+     			for(;j<=end&&checkAck[j%windowSize];j++) {
+     				int jdenx = j%windowSize;
+     				result.addElement(packets[jdenx].getTcpS().getData());
+     				checkAck[jdenx] = false;
+     			}
+     			begin = j ;
+     			end = begin + windowSize - 1;
+     			sequence = packets[(begin-1)%windowSize].getTcpH().getTh_seq();
+     			return result;
+     		}
+     	}
+     	return null;
+     }
+     ```
+    
      运行结果
-
-     可以看到当前53401号没有响应后，在计时器到时后，将当前的包全部重发了
-
-     ![1543493994705](https://raw.githubusercontent.com/liuyueweiyu/ComputerNetworkingHomework/master/images/1543493994705.png)
-
+    
+     ![1543492404019](https://raw.githubusercontent.com/liuyueweiyu/ComputerNetworkingHomework/master/images/1543492404019.png)
+    
+     当2801号包出错之后，窗口滑动至2801号窗口不再滑动，计时器时间到后重新发送，发送后窗口直接滑动至窗口尾即3601后，即开始发送3701号包
+    
      本次发送情况为
-
-     ![1543494085825](https://raw.githubusercontent.com/liuyueweiyu/ComputerNetworkingHomework/master/images/1543494085825.png)
-
+    
+     ![1543492598614](https://raw.githubusercontent.com/liuyueweiyu/ComputerNetworkingHomework/master/images/1543492598614.png)
+    
      发送错误点部分情况为：
+    
+     ```
+     ...
+     	2018-11-29 19:12:41:755 CST	DATA_seq: 2801	WRONG	NO_ACK
+     	2018-11-29 19:12:41:778 CST	DATA_seq: 2901		ACKed
+     	2018-11-29 19:12:41:794 CST	DATA_seq: 3001		ACKed
+     	2018-11-29 19:12:41:812 CST	DATA_seq: 3101		ACKed
+     	2018-11-29 19:12:41:835 CST	DATA_seq: 3201		ACKed
+     	2018-11-29 19:12:41:850 CST	DATA_seq: 3301		ACKed
+     	2018-11-29 19:12:41:879 CST	DATA_seq: 3401		ACKed
+     	2018-11-29 19:12:41:924 CST	DATA_seq: 3501		ACKed
+     	2018-11-29 19:12:41:939 CST	DATA_seq: 3601		ACKed
+     	2018-11-29 19:12:46:746 CST	*Re: DATA_seq: 2801		ACKed
+     	2018-11-29 19:12:46:751 CST	DATA_seq: 3701		ACKed
+     	2018-11-29 19:12:46:765 CST	DATA_seq: 3801		ACKed
+     ...
+     ...
+     	2018-11-29 19:12:47:739 CST	DATA_seq: 7701		ACKed
+     	2018-11-29 19:12:47:769 CST	DATA_seq: 7801		NO_ACK
+     	2018-11-29 19:12:47:806 CST	DATA_seq: 7901		ACKed
+     	2018-11-29 19:12:47:824 CST	DATA_seq: 8001		ACKed
+     	2018-11-29 19:12:47:865 CST	DATA_seq: 8101		ACKed
+     	2018-11-29 19:12:47:885 CST	DATA_seq: 8201		ACKed
+     	2018-11-29 19:12:47:899 CST	DATA_seq: 8301		ACKed
+     	2018-11-29 19:12:47:914 CST	DATA_seq: 8401		ACKed
+     	2018-11-29 19:12:47:932 CST	DATA_seq: 8501		ACKed
+     	2018-11-29 19:12:47:953 CST	DATA_seq: 8601		ACKed
+     	2018-11-29 19:12:52:768 CST	*Re: DATA_seq: 7801		ACKed
+     	2018-11-29 19:12:52:771 CST	DATA_seq: 8701		ACKed
+     	2018-11-29 19:12:52:784 CST	DATA_seq: 8801		ACKed
+     	2018-11-29 19:12:52:796 CST	DATA_seq: 8901		ACKed
+     ...
+     ...
+     	2018-11-29 19:12:53:040 CST	DATA_seq: 10601		ACKed
+     	2018-11-29 19:12:53:053 CST	DATA_seq: 10701		ACKed
+     	2018-11-29 19:12:53:064 CST	DATA_seq: 10801	LOSS	NO_ACK
+     	2018-11-29 19:12:53:076 CST	DATA_seq: 10901		ACKed
+     	2018-11-29 19:12:53:089 CST	DATA_seq: 11001		NO_ACK
+     	2018-11-29 19:12:53:102 CST	DATA_seq: 11101		ACKed
+     	2018-11-29 19:12:53:115 CST	DATA_seq: 11201		ACKed
+     	2018-11-29 19:12:53:140 CST	DATA_seq: 11301		ACKed
+     	2018-11-29 19:12:53:152 CST	DATA_seq: 11401		ACKed
+     	2018-11-29 19:12:53:163 CST	DATA_seq: 11501		ACKed
+     	2018-11-29 19:12:53:180 CST	DATA_seq: 11601		ACKed
+     	2018-11-29 19:12:58:065 CST	*Re: DATA_seq: 10801		ACKed
+     	2018-11-29 19:12:58:069 CST	DATA_seq: 11701		ACKed
+     	2018-11-29 19:12:58:085 CST	DATA_seq: 11801		ACKed
+     	2018-11-29 19:12:58:090 CST	*Re: DATA_seq: 11001	LOSS	NO_ACK
+     	2018-11-29 19:12:59:590 CST	*Re: DATA_seq: 11001		ACKed
+     	2018-11-29 19:12:59:594 CST	DATA_seq: 11901		ACKed
+     	2018-11-29 19:12:59:612 CST	DATA_seq: 12001		ACKed
+     	2018-11-29 19:12:59:627 CST	DATA_seq: 12101		ACKed
+     	2018-11-29 19:12:59:657 CST	DATA_seq: 12201		ACKed
+     ...
+     ...
+     	2018-11-29 19:13:00:145 CST	DATA_seq: 14701	LOSS	NO_ACK
+     	2018-11-29 19:13:00:199 CST	DATA_seq: 14801		ACKed
+     	2018-11-29 19:13:00:214 CST	DATA_seq: 14901		ACKed
+     	2018-11-29 19:13:00:242 CST	DATA_seq: 15001		ACKed
+     	2018-11-29 19:13:00:254 CST	DATA_seq: 15101		ACKed
+     	2018-11-29 19:13:00:267 CST	DATA_seq: 15201		ACKed
+     	2018-11-29 19:13:00:287 CST	DATA_seq: 15301		ACKed
+     	2018-11-29 19:13:00:301 CST	DATA_seq: 15401		ACKed
+     	2018-11-29 19:13:00:315 CST	DATA_seq: 15501	DELAY	NO_ACK
+     	2018-11-29 19:13:05:146 CST	*Re: DATA_seq: 14701		ACKed
+     	2018-11-29 19:13:05:149 CST	DATA_seq: 15601		ACKed
+     	2018-11-29 19:13:05:161 CST	DATA_seq: 15701		ACKed
+     	2018-11-29 19:13:05:173 CST	DATA_seq: 15801		ACKed
+     	2018-11-29 19:13:05:186 CST	DATA_seq: 15901		ACKed
+     	2018-11-29 19:13:05:197 CST	DATA_seq: 16001		ACKed
+     	2018-11-29 19:13:05:215 CST	DATA_seq: 16101		ACKed
+     	2018-11-29 19:13:05:229 CST	DATA_seq: 16201		ACKed
+     	2018-11-29 19:13:05:242 CST	DATA_seq: 16301		ACKed
+     	2018-11-29 19:13:05:340 CST	*Re: DATA_seq: 15501		ACKed
+     	2018-11-29 19:13:05:358 CST	DATA_seq: 16401		ACKed
+     ...
+     ...
+     	2018-11-29 19:13:06:470 CST	DATA_seq: 20901		ACKed
+     	2018-11-29 19:13:06:489 CST	DATA_seq: 21001		ACKed
+     	2018-11-29 19:13:06:509 CST	DATA_seq: 21101		NO_ACK
+     	2018-11-29 19:13:06:532 CST	DATA_seq: 21201		ACKed
+     	2018-11-29 19:13:06:555 CST	DATA_seq: 21301		ACKed
+     	2018-11-29 19:13:06:574 CST	DATA_seq: 21401		ACKed
+     	2018-11-29 19:13:06:597 CST	DATA_seq: 21501		ACKed
+     	2018-11-29 19:13:06:615 CST	DATA_seq: 21601		ACKed
+     	2018-11-29 19:13:06:634 CST	DATA_seq: 21701		ACKed
+     	2018-11-29 19:13:06:653 CST	DATA_seq: 21801		ACKed
+     	2018-11-29 19:13:06:682 CST	DATA_seq: 21901		NO_ACK
+     	2018-11-29 19:13:11:510 CST	*Re: DATA_seq: 21101		ACKed
+     	2018-11-29 19:13:11:512 CST	DATA_seq: 22001		ACKed
+     	2018-11-29 19:13:11:523 CST	DATA_seq: 22101		ACKed
+     	2018-11-29 19:13:11:535 CST	DATA_seq: 22201		ACKed
+     	2018-11-29 19:13:11:548 CST	DATA_seq: 22301		ACKed
+     	2018-11-29 19:13:11:561 CST	DATA_seq: 22401		ACKed
+     	2018-11-29 19:13:11:574 CST	DATA_seq: 22501		ACKed
+     	2018-11-29 19:13:11:586 CST	DATA_seq: 22601		ACKed
+     	2018-11-29 19:13:11:598 CST	DATA_seq: 22701		ACKed
+     	2018-11-29 19:13:11:682 CST	*Re: DATA_seq: 21901	WRONG	NO_ACK
+     	2018-11-29 19:13:13:182 CST	*Re: DATA_seq: 21901		ACKed
+     	2018-11-29 19:13:13:185 CST	DATA_seq: 22801		ACKed
+     	2018-11-29 19:13:13:205 CST	DATA_seq: 22901		ACKed
+     	2018-11-29 19:13:13:230 CST	DATA_seq: 23001		ACKed
+     ...
+     ...
+     	2018-11-29 19:13:14:688 CST	DATA_seq: 30401		ACKed
+     	2018-11-29 19:13:14:708 CST	DATA_seq: 30501	LOSS	NO_ACK
+     	2018-11-29 19:13:14:730 CST	DATA_seq: 30601		ACKed
+     	2018-11-29 19:13:14:761 CST	DATA_seq: 30701		ACKed
+     	2018-11-29 19:13:14:787 CST	DATA_seq: 30801		ACKed
+     	2018-11-29 19:13:14:803 CST	DATA_seq: 30901		ACKed
+     	2018-11-29 19:13:14:835 CST	DATA_seq: 31001		ACKed
+     	2018-11-29 19:13:14:850 CST	DATA_seq: 31101		ACKed
+     	2018-11-29 19:13:14:885 CST	DATA_seq: 31201		ACKed
+     	2018-11-29 19:13:14:941 CST	DATA_seq: 31301		ACKed
+     	2018-11-29 19:13:19:708 CST	*Re: DATA_seq: 30501		ACKed
+     	2018-11-29 19:13:19:710 CST	DATA_seq: 31401		ACKed
+     	2018-11-29 19:13:19:722 CST	DATA_seq: 31501		ACKed
+     	2018-11-29 19:13:19:735 CST	DATA_seq: 31601		ACKed
+     	2018-11-29 19:13:19:746 CST	DATA_seq: 31701		ACKed
+     ...
+     ...
+     ...
+     ```
 
-     ```
-     ...
-     	2018-11-29 20:10:02:327 CST	DATA_seq: 1501		ACKed
-     	2018-11-29 20:10:02:355 CST	DATA_seq: 1601		ACKed
-     	2018-11-29 20:10:02:391 CST	DATA_seq: 1701	LOSS	NO_ACK
-     	2018-11-29 20:10:02:411 CST	DATA_seq: 1801		ACKed
-     	2018-11-29 20:10:02:426 CST	DATA_seq: 1901		ACKed
-     	2018-11-29 20:10:02:444 CST	DATA_seq: 2001		ACKed
-     	2018-11-29 20:10:02:470 CST	DATA_seq: 2101		ACKed
-     	2018-11-29 20:10:02:499 CST	DATA_seq: 2201		ACKed
-     	2018-11-29 20:10:02:527 CST	DATA_seq: 2301		ACKed
-     	2018-11-29 20:10:02:551 CST	DATA_seq: 2401	DELAY	NO_ACK
-     	2018-11-29 20:10:02:584 CST	DATA_seq: 2501		ACKed
-     	2018-11-29 20:10:07:378 CST	*Re: DATA_seq: 1701		ACKed
-     	2018-11-29 20:10:07:379 CST	DATA_seq: 1801		ACKed
-     	2018-11-29 20:10:07:382 CST	DATA_seq: 1901		ACKed
-     	2018-11-29 20:10:07:383 CST	DATA_seq: 2001		ACKed
-     	2018-11-29 20:10:07:383 CST	DATA_seq: 2101		ACKed
-     	2018-11-29 20:10:07:384 CST	DATA_seq: 2201		ACKed
-     	2018-11-29 20:10:07:384 CST	DATA_seq: 2301		ACKed
-     	2018-11-29 20:10:07:385 CST	*Re: DATA_seq: 2401		ACKed
-     	2018-11-29 20:10:07:385 CST	DATA_seq: 2501		ACKed
-     	2018-11-29 20:10:07:400 CST	DATA_seq: 2601		ACKed
-     	2018-11-29 20:10:07:431 CST	DATA_seq: 2701		ACKed
-     	2018-11-29 20:10:07:472 CST	DATA_seq: 2801		ACKed
-     	2018-11-29 20:10:07:544 CST	DATA_seq: 2401		ACKed
-     	2018-11-29 20:10:07:544 CST	DATA_seq: 2501		ACKed
-     	2018-11-29 20:10:07:545 CST	DATA_seq: 2601		ACKed
-     	2018-11-29 20:10:07:545 CST	DATA_seq: 2701		ACKed
-     	2018-11-29 20:10:07:546 CST	DATA_seq: 2801		ACKed
-     	2018-11-29 20:10:07:547 CST	DATA_seq: 2901		ACKed
-     	2018-11-29 20:10:07:617 CST	DATA_seq: 3001		ACKed
-     ...
-     ...
-     2018-11-29 20:10:15:440 CST	DATA_seq: 12901		ACKed
-     	2018-11-29 20:10:15:458 CST	DATA_seq: 13001		ACKed
-     	2018-11-29 20:10:15:476 CST	DATA_seq: 13101		ACKed
-     	2018-11-29 20:10:20:302 CST	*Re: DATA_seq: 12301		ACKed
-     	2018-11-29 20:10:20:302 CST	DATA_seq: 12401		ACKed
-     	2018-11-29 20:10:20:302 CST	DATA_seq: 12501		ACKed
-     	2018-11-29 20:10:20:303 CST	DATA_seq: 12601		ACKed
-     	2018-11-29 20:10:20:303 CST	DATA_seq: 12701		ACKed
-     	2018-11-29 20:10:20:303 CST	DATA_seq: 12801		ACKed
-     	2018-11-29 20:10:20:305 CST	DATA_seq: 12901		ACKed
-     	2018-11-29 20:10:20:306 CST	DATA_seq: 13201		ACKed
-     	2018-11-29 20:10:20:326 CST	*Re: DATA_seq: 13201		ACKed
-     	2018-11-29 20:10:20:341 CST	DATA_seq: 13301		ACKed
-     	2018-11-29 20:10:20:378 CST	DATA_seq: 13401		ACKed
-     	2018-11-29 20:10:20:577 CST	DATA_seq: 13501		ACKed
-     	2018-11-29 20:10:20:688 CST	DATA_seq: 13601		ACKed
-     	2018-11-29 20:10:20:823 CST	DATA_seq: 13701		ACKed
-     	2018-11-29 20:10:20:886 CST	DATA_seq: 13801		ACKed
-     	2018-11-29 20:10:20:941 CST	DATA_seq: 13901		ACKed
-     	2018-11-29 20:10:21:036 CST	DATA_seq: 14001		ACKed
-     	2018-11-29 20:10:21:059 CST	DATA_seq: 14101		ACKed
-     	2018-11-29 20:10:21:086 CST	DATA_seq: 14201		ACKed
-     	2018-11-29 20:10:21:158 CST	DATA_seq: 14301		NO_ACK
-     	2018-11-29 20:10:21:415 CST	DATA_seq: 14401		ACKed
-     	2018-11-29 20:10:21:441 CST	DATA_seq: 14501		ACKed
-     	2018-11-29 20:10:21:463 CST	DATA_seq: 14601		ACKed
-     	2018-11-29 20:10:21:485 CST	DATA_seq: 14701		ACKed
-     	2018-11-29 20:10:21:507 CST	DATA_seq: 14801		ACKed
-     	2018-11-29 20:10:21:539 CST	DATA_seq: 14901		ACKed
-     	2018-11-29 20:10:21:568 CST	DATA_seq: 15001		ACKed
-     	2018-11-29 20:10:21:601 CST	DATA_seq: 15101		ACKed
-     	2018-11-29 20:10:26:120 CST	*Re: DATA_seq: 14301		ACKed
-     	2018-11-29 20:10:26:120 CST	DATA_seq: 14401		ACKed
-     	2018-11-29 20:10:26:120 CST	DATA_seq: 14501		ACKed
-     	2018-11-29 20:10:26:121 CST	DATA_seq: 14601		ACKed
-     	2018-11-29 20:10:26:121 CST	DATA_seq: 14701		ACKed
-     	2018-11-29 20:10:26:121 CST	DATA_seq: 14801		ACKed
-     	2018-11-29 20:10:26:121 CST	DATA_seq: 14901		ACKed
-     	2018-11-29 20:10:26:121 CST	DATA_seq: 15001		ACKed
-     	2018-11-29 20:10:26:121 CST	DATA_seq: 15101		ACKed
-     ...
-     ...
-     	2018-11-29 20:10:44:712 CST	DATA_seq: 34101	DELAY	NO_ACK
-     	2018-11-29 20:10:44:730 CST	DATA_seq: 34201		ACKed
-     	2018-11-29 20:10:44:749 CST	DATA_seq: 34301		ACKed
-     	2018-11-29 20:10:44:768 CST	DATA_seq: 34401		ACKed
-     	2018-11-29 20:10:44:790 CST	DATA_seq: 34501		ACKed
-     	2018-11-29 20:10:44:808 CST	DATA_seq: 34601		ACKed
-     	2018-11-29 20:10:44:828 CST	DATA_seq: 34701		ACKed
-     	2018-11-29 20:10:44:848 CST	DATA_seq: 34801		ACKed
-     	2018-11-29 20:10:44:866 CST	DATA_seq: 34901		ACKed
-     	2018-11-29 20:10:49:702 CST	*Re: DATA_seq: 34101		ACKed
-     	2018-11-29 20:10:49:702 CST	DATA_seq: 34201		ACKed
-     	2018-11-29 20:10:49:702 CST	DATA_seq: 34301		NO_ACK
-     	2018-11-29 20:10:49:702 CST	DATA_seq: 34401		ACKed
-     	2018-11-29 20:10:49:703 CST	DATA_seq: 34501		ACKed
-     	2018-11-29 20:10:49:703 CST	DATA_seq: 34601		ACKed
-     	2018-11-29 20:10:49:703 CST	DATA_seq: 34701		ACKed
-     	2018-11-29 20:10:49:703 CST	DATA_seq: 34801		ACKed
-     	2018-11-29 20:10:49:703 CST	DATA_seq: 34901		ACKed
-     	2018-11-29 20:10:49:715 CST	DATA_seq: 35001		ACKed
-     	2018-11-29 20:10:49:736 CST	DATA_seq: 35101		ACKed
-     	2018-11-29 20:10:49:761 CST	DATA_seq: 35201		ACKed
-     	2018-11-29 20:10:49:785 CST	DATA_seq: 35301	DELAY	NO_ACK
-     	2018-11-29 20:10:49:808 CST	DATA_seq: 35401		ACKed
-     	2018-11-29 20:10:49:835 CST	DATA_seq: 35501		ACKed
-     	2018-11-29 20:10:49:856 CST	DATA_seq: 35601		ACKed
-     	2018-11-29 20:10:49:878 CST	DATA_seq: 35701		ACKed
-     	2018-11-29 20:10:49:901 CST	DATA_seq: 35801		ACKed
-     	2018-11-29 20:10:49:923 CST	DATA_seq: 35901		ACKed
-     	2018-11-29 20:10:49:946 CST	DATA_seq: 36001		ACKed
-     	2018-11-29 20:10:49:969 CST	DATA_seq: 36101		ACKed
-     	2018-11-29 20:10:54:773 CST	*Re: DATA_seq: 35301		ACKed
-     	2018-11-29 20:10:54:773 CST	DATA_seq: 35401		ACKed
-     	2018-11-29 20:10:54:773 CST	DATA_seq: 35501		ACKed
-     	2018-11-29 20:10:54:773 CST	DATA_seq: 35601		ACKed
-     	2018-11-29 20:10:54:773 CST	DATA_seq: 35701	LOSS	NO_ACK
-     	2018-11-29 20:10:54:773 CST	DATA_seq: 35801		ACKed
-     	2018-11-29 20:10:54:774 CST	DATA_seq: 35901		ACKed
-     	2018-11-29 20:10:54:774 CST	DATA_seq: 36001		ACKed
-     	2018-11-29 20:10:54:774 CST	DATA_seq: 36101		ACKed
-     	2018-11-29 20:10:54:785 CST	DATA_seq: 36201		ACKed
-     	2018-11-29 20:10:54:807 CST	DATA_seq: 36301		ACKed
-     	2018-11-29 20:10:54:830 CST	DATA_seq: 36401		ACKed
-     	2018-11-29 20:10:54:852 CST	DATA_seq: 36501		ACKed
-     	2018-11-29 20:10:54:872 CST	DATA_seq: 36601		ACKed
-     	2018-11-29 20:10:54:895 CST	DATA_seq: 36701		ACKed
-     	2018-11-29 20:10:54:921 CST	DATA_seq: 36801		ACKed
-     ...
-     ```
 
 #### 实验总结
 

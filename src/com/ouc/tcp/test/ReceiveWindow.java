@@ -16,7 +16,7 @@ public class ReceiveWindow extends Window {
 		super(client);
 	}
 	
-	public Vector reply(TCP_PACKET recvPack,TCP_PACKET packet) {
+	public Vector reply_select(TCP_PACKET recvPack,TCP_PACKET packet) {
 		Vector result = new Vector();
 		int index = packet.getTcpH().getTh_ack()/100;
 		if(index >= 0 ) {
@@ -28,7 +28,6 @@ public class ReceiveWindow extends Window {
 				int j = begin;
 				for(;j<=end&&checkAck[j%windowSize];j++) {
 					int jdenx = j%windowSize;
-					System.out.println(jdenx);
 					result.addElement(packets[jdenx].getTcpS().getData());
 					checkAck[jdenx] = false;
 				}
@@ -40,6 +39,18 @@ public class ReceiveWindow extends Window {
 		}
 		return null;
 	}
+	public Vector reply_BGN(TCP_PACKET recvPack,TCP_PACKET packet) {
+		Vector result = new Vector();
+		client.send(packet);
+		if(recvPack.getTcpH().getTh_seq() == sequence) {
+			receiveWindowlog_receive(sequence);
+			result.addElement(recvPack.getTcpS().getData());
+			sequence += recvPack.getTcpS().getData().length;
+			return result;
+		}
+		else
+			return null;
+	}
 	
 	public void receiveWindowlog_receive(int seq) {
 		//检查dataQueue，将数据写入文件
@@ -49,19 +60,7 @@ public class ReceiveWindow extends Window {
 		try {
 			writer = new BufferedWriter(new FileWriter(fw, true));
 			writer.write("\n=======================================================\n");
-			writer.write("收到seq为"+seq+"的包时\t" +"起始窗口为"+begin+"\t终止窗口为:"+end+"\n");
-			for(int i = begin; i <= end;i++) {
-				int index = i%windowSize;
-				if(packets[index]!= null) {
-					if(checkAck[index]) {
-						writer.write("窗口"+(index+begin)+": sequence "+ packets[index].getTcpH().getTh_seq() +" is rereived!\n");
-					}
-					else{
-						writer.write("窗口"+(index+begin)+": sequence "+ packets[index].getTcpH().getTh_seq() +" is not rereived!\n");
-					}
-				}
-				
-			}
+			writer.write("收到seq为"+seq+"的包时\n");
 			writer.write("=======================================================\n");
 			writer.flush();		//清空输出缓存
 			
